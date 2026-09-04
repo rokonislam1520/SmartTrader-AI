@@ -22,6 +22,17 @@ class SignalGenerator:
 
         Indicator scores are normalized to a common scale before weighting.
         Volume is a confirmation signal, therefore it contributes only +/-0.5.
+        Missing optional statuses are treated as neutral rather than causing an
+        unsafe directional decision.
+
+        Args:
+            market_analysis: Mapping containing the analyzer's indicator values.
+
+        Returns:
+            A serializable signal, confidence score, component scores, and reasons.
+
+        Raises:
+            ValueError: If the input is not mapping-like or RSI is invalid.
         """
         if not isinstance(market_analysis, Mapping):
             raise ValueError("market_analysis must be a dictionary-like object.")

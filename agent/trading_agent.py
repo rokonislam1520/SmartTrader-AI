@@ -1,5 +1,6 @@
 """Main orchestration layer for the SmartTrader-AI demo trading agent."""
 
+import math
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -29,8 +30,8 @@ class TradingAgent:
             self.initial_balance = float(raw_balance)
         except (TypeError, ValueError) as exc:
             raise ValueError("Initial balance must be numeric.") from exc
-        if self.initial_balance <= 0:
-            raise ValueError("Initial balance must be greater than zero.")
+        if not math.isfinite(self.initial_balance) or self.initial_balance <= 0:
+            raise ValueError("Initial balance must be a finite number greater than zero.")
 
         self.balance = self.initial_balance
         self.market_analyzer = MarketAnalyzer()
@@ -106,24 +107,41 @@ class TradingAgent:
             return dict(self.account_balance)
 
     def place_order(self, symbol: str, side: str, quantity: float) -> Any:
-        """Place through MCP, or print a non-live demo order."""
-        normalized_side = side.strip().upper()
+        """Place through MCP, or print a non-live demo order.
+
+        Args:
+            symbol: Binance symbol to trade.
+            side: ``BUY`` or ``SELL``.
+            quantity: Positive base-asset quantity.
+
+        Raises:
+            ValueError: If the symbol, side, or quantity is invalid.
+            BinanceMCPError: If live-mode prerequisites are not met.
+        """
+        normalized_symbol = str(symbol).strip().upper()
+        if not normalized_symbol:
+            raise ValueError("symbol cannot be empty.")
+        normalized_side = str(side).strip().upper()
         if normalized_side not in {"BUY", "SELL"}:
             raise ValueError("side must be BUY or SELL.")
-        if float(quantity) <= 0:
-            raise ValueError("quantity must be greater than zero.")
+        try:
+            normalized_quantity = float(quantity)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("quantity must be numeric.") from exc
+        if not math.isfinite(normalized_quantity) or normalized_quantity <= 0:
+            raise ValueError("quantity must be a finite number greater than zero.")
         if self.execution_mode == "DEMO":
-            result = {"mode": "DEMO", "symbol": symbol.upper(), "side": normalized_side, "quantity": float(quantity)}
-            print(f"[TradingAgent] DEMO TRADE: {normalized_side} {symbol.upper()} x {quantity}")
+            result = {"mode": "DEMO", "symbol": normalized_symbol, "side": normalized_side, "quantity": normalized_quantity}
+            print(f"[TradingAgent] DEMO TRADE: {normalized_side} {normalized_symbol} x {normalized_quantity}")
             return result
         if not self.binance_connected:
             raise BinanceMCPError("Connect to Binance before placing an order.")
         try:
             result = self._call_binance_mcp(
                 "binance_place_order",
-                {"symbol": symbol.strip().upper(), "side": normalized_side, "quantity": float(quantity), "type": "MARKET"},
+                {"symbol": normalized_symbol, "side": normalized_side, "quantity": normalized_quantity, "type": "MARKET"},
             )
-            print(f"[TradingAgent] MCP order placed: {normalized_side} {symbol.upper()} x {quantity}")
+            print(f"[TradingAgent] MCP order placed: {normalized_side} {normalized_symbol} x {normalized_quantity}")
             return result
         except BinanceMCPError as exc:
             print(f"[TradingAgent] Order MCP call failed; switching to DEMO: {exc}")
@@ -132,7 +150,9 @@ class TradingAgent:
 
     def get_live_market_data(self, symbol: str) -> Dict[str, Any]:
         """Use MCP ticker data, or Binance's public 24-hour ticker in DEMO mode."""
-        normalized_symbol = symbol.strip().upper()
+        normalized_symbol = str(symbol).strip().upper()
+        if not normalized_symbol:
+            raise ValueError("symbol cannot be empty.")
         if self.execution_mode != "DEMO":
             try:
                 response = self._call_binance_mcp("binance_get_ticker", {"symbol": normalized_symbol})

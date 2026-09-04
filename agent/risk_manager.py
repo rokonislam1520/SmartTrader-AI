@@ -24,7 +24,19 @@ class RiskManager:
     """Apply position-sizing, loss-limit, and trade-validation safeguards."""
 
     def __init__(self, initial_balance: Optional[float] = None) -> None:
-        self.initial_balance = self._non_negative(initial_balance, "initial_balance") if initial_balance is not None else None
+        """Initialize risk state.
+
+        Args:
+            initial_balance: Optional positive baseline used for drawdown checks.
+
+        Raises:
+            ValueError: If ``initial_balance`` is supplied but invalid.
+        """
+        self.initial_balance = (
+            self._non_negative(initial_balance, "initial_balance")
+            if initial_balance is not None
+            else None
+        )
         self.daily_pnl = 0.0
         self.open_positions_count = 0
         self.maximum_drawdown = 0.0
@@ -73,9 +85,9 @@ class RiskManager:
         stop = self._positive(stop_loss_price, "stop_loss_price")
         if entry == stop:
             raise ValueError("Entry price and stop-loss price must differ.")
-        probability = float(win_probability)
+        probability = self._positive(win_probability, "win_probability")
         ratio = self._positive(win_loss_ratio, "win_loss_ratio")
-        if not np.isfinite(probability) or not 0 < probability < 1:
+        if probability >= 1:
             raise ValueError("win_probability must be between 0 and 1.")
 
         kelly_fraction = probability - ((1.0 - probability) / ratio)

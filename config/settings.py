@@ -4,6 +4,7 @@ All values can be overridden through a ``.env`` file in the project root.
 Never commit a real ``.env`` file or live Binance API credentials.
 """
 
+import math
 import os
 from pathlib import Path
 from typing import Any, Dict
@@ -19,7 +20,18 @@ load_dotenv(dotenv_path=ENV_FILE)
 
 
 def _get_bool(name: str, default: bool) -> bool:
-    """Read a boolean environment variable using common true/false values."""
+    """Read a boolean environment variable using common true/false values.
+
+    Args:
+        name: Environment variable name.
+        default: Value used when the variable is absent.
+
+    Returns:
+        The parsed boolean value.
+
+    Raises:
+        ValueError: If a present value is not a recognized boolean literal.
+    """
     value = os.getenv(name)
     if value is None:
         return default
@@ -47,13 +59,17 @@ TRADING_PAIRS = tuple(
     for pair in os.getenv("TRADING_PAIRS", "BTCUSDT,ETHUSDT").split(",")
     if pair.strip()
 )
-MAX_RISK_PER_TRADE = float(os.getenv("MAX_RISK_PER_TRADE", "2.0"))
-DAILY_LOSS_LIMIT = float(os.getenv("DAILY_LOSS_LIMIT", "5.0"))
-MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "3"))
-TRADE_INTERVAL = int(os.getenv("TRADE_INTERVAL", "900"))
-MAX_DRAWDOWN = float(os.getenv("MAX_DRAWDOWN", "10.0"))
-STOP_LOSS_ATR_MULTIPLIER = float(os.getenv("STOP_LOSS_ATR_MULTIPLIER", "1.5"))
-MIN_RISK_REWARD_RATIO = float(os.getenv("MIN_RISK_REWARD_RATIO", "2.0"))
+# Parse once at import time so the rest of the application can use typed constants.
+try:
+    MAX_RISK_PER_TRADE = float(os.getenv("MAX_RISK_PER_TRADE", "2.0"))
+    DAILY_LOSS_LIMIT = float(os.getenv("DAILY_LOSS_LIMIT", "5.0"))
+    MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "3"))
+    TRADE_INTERVAL = int(os.getenv("TRADE_INTERVAL", "900"))
+    MAX_DRAWDOWN = float(os.getenv("MAX_DRAWDOWN", "10.0"))
+    STOP_LOSS_ATR_MULTIPLIER = float(os.getenv("STOP_LOSS_ATR_MULTIPLIER", "1.5"))
+    MIN_RISK_REWARD_RATIO = float(os.getenv("MIN_RISK_REWARD_RATIO", "2.0"))
+except (TypeError, ValueError) as exc:
+    raise ValueError("Numeric trading configuration contains an invalid value.") from exc
 
 
 # Names that must have usable values before the agent can trade.
@@ -84,10 +100,17 @@ def validate_config() -> bool:
             + ", ".join(missing_keys)
         )
 
-    if any(value <= 0 for value in (MAX_RISK_PER_TRADE, DAILY_LOSS_LIMIT,
-                                    MAX_DRAWDOWN, STOP_LOSS_ATR_MULTIPLIER,
-                                    MIN_RISK_REWARD_RATIO)):
-        raise ValueError("Risk-management values must be greater than zero.")
+    if not TRADING_PAIRS:
+        raise ValueError("TRADING_PAIRS must contain at least one symbol.")
+    numeric_values = (
+        MAX_RISK_PER_TRADE,
+        DAILY_LOSS_LIMIT,
+        MAX_DRAWDOWN,
+        STOP_LOSS_ATR_MULTIPLIER,
+        MIN_RISK_REWARD_RATIO,
+    )
+    if any(not math.isfinite(value) or value <= 0 for value in numeric_values):
+        raise ValueError("Risk-management values must be finite and greater than zero.")
     if MAX_POSITIONS < 1:
         raise ValueError("MAX_POSITIONS must be at least 1.")
     if TRADE_INTERVAL < 1:

@@ -36,8 +36,11 @@ class MarketAnalyzer:
         """Create an analyzer with an in-memory cache.
 
         Args:
-            cache_duration: How long an analysis remains reusable.
+            cache_duration: How long an analysis remains reusable. A negative
+                duration is rejected because it would disable caching silently.
         """
+        if not isinstance(cache_duration, timedelta) or cache_duration < timedelta(0):
+            raise ValueError("cache_duration must be a non-negative timedelta.")
         self.cache_duration = cache_duration
         self._cache: Dict[Tuple[str, str], Tuple[datetime, Dict[str, Any]]] = {}
 
@@ -113,8 +116,10 @@ class MarketAnalyzer:
             import json
 
             payload = json.loads(response.read().decode("utf-8"))
-        if not isinstance(payload, list) or len(payload) < 200:
+        if not isinstance(payload, list) or len(payload) < self.DEFAULT_LIMIT:
             raise ValueError("Binance returned insufficient candlestick data.")
+        if any(not isinstance(row, (list, tuple)) or len(row) < 12 for row in payload):
+            raise ValueError("Binance returned malformed candlestick rows.")
         return payload
 
     @staticmethod
