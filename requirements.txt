@@ -1,0 +1,14 @@
+# Data analysis library for OHLCV data and rolling calculations
+pandas>=2.0.0
+
+# Numerical computing used by indicators and risk calculations
+numpy>=1.24.0
+
+# Technical analysis indicators such as RSI, MACD, Bollinger Bands, and ATR
+ta>=0.11.0
+
+# Loads Binance credentials and application settings from .env
+python-dotenv>=1.0.0
+
+# HTTP client support for future Binance and Agent OS integrations
+requests>=2.31.0
