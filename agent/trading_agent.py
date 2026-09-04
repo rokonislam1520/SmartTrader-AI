@@ -4,6 +4,10 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+
+class BinanceMCPError(RuntimeError):
+    """Raised when the configured Binance Agent OS MCP client is unavailable."""
+
 from agent.market_analyzer import MarketAnalyzer
 from agent.signal_generator import SignalGenerator
 from agent.risk_manager import RiskManager
@@ -11,18 +15,14 @@ from config.settings import BINANCE_TESTNET, MAX_RISK_PER_TRADE, TRADING_PAIRS
 
 
 class TradingAgent:
-    """Coordinate market analysis, signal generation, and risk controls.
+    """Coordinate market analysis, signals, risk controls, and Binance MCP calls."""
 
-    This implementation is deliberately demo-only: it prints hypothetical
-    executions and never submits orders to Binance.
-    """
+    def __init__(self, initial_balance: Optional[float] = None, mcp_client: Any = None) -> None:
+        """Initialize modules and an optional authenticated MCP client.
 
-    def __init__(self, initial_balance: Optional[float] = None) -> None:
-        """Initialize modules and paper-trading state.
-
-        The project settings do not define an account balance, so the optional
-        argument or ACCOUNT_BALANCE environment variable is used; otherwise
-        the safe paper-trading default is 10,000.
+        ``mcp_client`` should be the connected Binance Agent OS MCP client.
+        It is injected rather than fabricated here because MCP SDK clients
+        differ by host. The client must expose ``call_tool(name, arguments)``.
         """
         raw_balance = os.getenv("ACCOUNT_BALANCE", "10000") if initial_balance is None else initial_balance
         try:
@@ -36,12 +36,131 @@ class TradingAgent:
         self.market_analyzer = MarketAnalyzer()
         self.signal_generator = SignalGenerator()
         self.risk_manager = RiskManager(initial_balance=self.initial_balance)
+        self.mcp_client = mcp_client
+        self.execution_mode = "MCP" if mcp_client is not None else "DEMO"
+        self.binance_connected = False
+        self.account_balance: Dict[str, Any] = {"total": self.balance, "free": self.balance}
         self.open_positions: List[Dict[str, Any]] = []
         self.daily_pnl = 0.0
         self.is_running = False
         self._cycle_results: List[Dict[str, Any]] = []
 
-        print(f"[TradingAgent] Initialized in {'TESTNET' if BINANCE_TESTNET else 'DEMO'} mode.")
+        print(f"[TradingAgent] Initialized in {self.execution_mode} mode ({'TESTNET' if BINANCE_TESTNET else 'PUBLIC API'}).")
+
+    def _call_binance_mcp(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
+        """Call a Binance MCP tool through the host-provided client.
+
+        Tool names are centralized here so the integration can be adapted to
+        the exact server schema without spreading MCP details across the agent.
+        """
+        if self.mcp_client is None:
+            raise BinanceMCPError(
+                "No Binance MCP client configured. Pass the authenticated "
+                "binance-mcp-server client as mcp_client."
+            )
+        caller = getattr(self.mcp_client, "call_tool", None)
+        if not callable(caller):
+            raise BinanceMCPError("MCP client must provide call_tool(name, arguments).")
+        try:
+            return caller(tool_name, arguments)
+        except Exception as exc:
+            raise BinanceMCPError(f"Binance MCP tool '{tool_name}' failed: {exc}") from exc
+
+    def connect_to_binance(self) -> bool:
+        """Use MCP when available, otherwise activate public-API DEMO mode."""
+        if self.mcp_client is None:
+            self.execution_mode = "DEMO"
+            self.binance_connected = True
+            print("[TradingAgent] MCP not available; DEMO mode uses Binance public API.")
+            return True
+
+        try:
+            self._call_binance_mcp("binance_get_account", {})
+            self.binance_connected = True
+            self.execution_mode = "MCP"
+            print("[TradingAgent] Binance MCP connection verified.")
+            return True
+        except BinanceMCPError as exc:
+            self.mcp_client = None
+            self.execution_mode = "DEMO"
+            self.binance_connected = True
+            print(f"[TradingAgent] MCP unavailable ({exc}); falling back to DEMO mode.")
+            return True
+
+    def get_account_balance(self) -> Dict[str, Any]:
+        """Return MCP account balance or the local demo balance."""
+        if self.execution_mode == "DEMO":
+            print(f"[TradingAgent] DEMO balance: {self.balance:.2f}")
+            return dict(self.account_balance)
+        try:
+            response = self._call_binance_mcp("binance_get_account", {})
+            self.account_balance = response if isinstance(response, dict) else {"raw": response}
+            total = self.account_balance.get("total")
+            if isinstance(total, (int, float)) and total > 0:
+                self.balance = float(total)
+            print(f"[TradingAgent] Account balance received: {self.account_balance}")
+            return dict(self.account_balance)
+        except BinanceMCPError as exc:
+            print(f"[TradingAgent] Balance MCP call failed; retaining DEMO balance: {exc}")
+            self.execution_mode = "DEMO"
+            return dict(self.account_balance)
+
+    def place_order(self, symbol: str, side: str, quantity: float) -> Any:
+        """Place through MCP, or print a non-live demo order."""
+        normalized_side = side.strip().upper()
+        if normalized_side not in {"BUY", "SELL"}:
+            raise ValueError("side must be BUY or SELL.")
+        if float(quantity) <= 0:
+            raise ValueError("quantity must be greater than zero.")
+        if self.execution_mode == "DEMO":
+            result = {"mode": "DEMO", "symbol": symbol.upper(), "side": normalized_side, "quantity": float(quantity)}
+            print(f"[TradingAgent] DEMO TRADE: {normalized_side} {symbol.upper()} x {quantity}")
+            return result
+        if not self.binance_connected:
+            raise BinanceMCPError("Connect to Binance before placing an order.")
+        try:
+            result = self._call_binance_mcp(
+                "binance_place_order",
+                {"symbol": symbol.strip().upper(), "side": normalized_side, "quantity": float(quantity), "type": "MARKET"},
+            )
+            print(f"[TradingAgent] MCP order placed: {normalized_side} {symbol.upper()} x {quantity}")
+            return result
+        except BinanceMCPError as exc:
+            print(f"[TradingAgent] Order MCP call failed; switching to DEMO: {exc}")
+            self.execution_mode = "DEMO"
+            return self.place_order(symbol, normalized_side, quantity)
+
+    def get_live_market_data(self, symbol: str) -> Dict[str, Any]:
+        """Use MCP ticker data, or Binance's public 24-hour ticker in DEMO mode."""
+        normalized_symbol = symbol.strip().upper()
+        if self.execution_mode != "DEMO":
+            try:
+                response = self._call_binance_mcp("binance_get_ticker", {"symbol": normalized_symbol})
+                print(f"[TradingAgent] Live market data received via MCP for {normalized_symbol}.")
+                return response if isinstance(response, dict) else {"raw": response}
+            except BinanceMCPError as exc:
+                print(f"[TradingAgent] Ticker MCP call failed; using public API: {exc}")
+                self.execution_mode = "DEMO"
+
+        try:
+            import json
+            from urllib.parse import urlencode
+            from urllib.request import Request, urlopen
+
+            query = urlencode({"symbol": normalized_symbol})
+            request = Request(
+                f"https://api.binance.com/api/v3/ticker/24hr?{query}",
+                headers={"User-Agent": "SmartTrader-AI/1.0"},
+            )
+            with urlopen(request, timeout=10) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("Public Binance ticker response was not an object.")
+            print(f"[TradingAgent] Public Binance market data received for {normalized_symbol}.")
+            return payload
+        except Exception as exc:
+            print(f"[TradingAgent] Public market data failed for {normalized_symbol}: {exc}")
+            return {"symbol": normalized_symbol, "error": str(exc)}
 
     def analyze_and_trade(self, symbol: str) -> Dict[str, Any]:
         """Analyze one symbol and record a hypothetical trade if approved."""
@@ -138,7 +257,7 @@ class TradingAgent:
         return list(self._cycle_results)
 
     def start(self) -> None:
-        """Print the startup banner and run one demo cycle."""
+        """Verify MCP first, then run one analysis cycle."""
         self.is_running = True
         print("=" * 48)
         print("|   SmartTrader AI - Binance Agent OS          |")
@@ -150,7 +269,15 @@ class TradingAgent:
         print(f"  Testnet mode: {BINANCE_TESTNET}")
         print(f"  Paper balance: {self.balance:.2f}")
         print(f"  Max risk/trade: {MAX_RISK_PER_TRADE:.2f}%")
-        print("  Execution: DEMO ONLY (no live orders)")
+        if not self.connect_to_binance():
+            # This branch is defensive; connect_to_binance currently activates
+            # DEMO mode when MCP is absent or unavailable.
+            self.is_running = False
+            print("[TradingAgent] Unable to initialize Binance access; agent stopped safely.")
+            return
+        # Refresh the account balance when MCP provides one; DEMO keeps 10,000.
+        self.get_account_balance()
+        print(f"  Execution mode: {self.execution_mode}")
         self.run_single_cycle()
 
     def stop(self) -> None:
