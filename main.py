@@ -1,7 +1,10 @@
 """Command-line entry point for SmartTrader-AI."""
 
+import argparse
 from datetime import datetime
 from typing import Any
+
+from agent.backtester import Backtester
 
 from agent.trading_agent import TradingAgent
 from config.settings import BINANCE_TESTNET, MAX_RISK_PER_TRADE, TRADING_PAIRS
@@ -37,7 +40,15 @@ def print_banner() -> None:
 
 
 def main() -> None:
-    """Initialize and run one safe, demo-only trading cycle."""
+    """Initialize safe demo mode, or run the public-data-only backtester."""
+    parser = argparse.ArgumentParser(description="SmartTrader-AI")
+    parser.add_argument("--backtest", action="store_true", help="Run a 30-day paper backtest")
+    parser.add_argument("--symbol", default="BTCUSDT")
+    args = parser.parse_args()
+    if args.backtest:
+        print("Running public Binance backtest; no live orders are possible.")
+        print(Backtester().run(args.symbol)["metrics"])
+        return
     agent = None
     print_banner()
     print(f"Start time: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}")

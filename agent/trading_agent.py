@@ -13,6 +13,7 @@ from agent.market_analyzer import MarketAnalyzer
 from agent.signal_generator import SignalGenerator
 from agent.risk_manager import RiskManager
 from config.settings import BINANCE_TESTNET, MAX_RISK_PER_TRADE, TRADING_PAIRS
+from utils.notifier import TelegramNotifier
 
 
 class TradingAgent:
@@ -37,6 +38,7 @@ class TradingAgent:
         self.market_analyzer = MarketAnalyzer()
         self.signal_generator = SignalGenerator()
         self.risk_manager = RiskManager(initial_balance=self.initial_balance)
+        self.notifier = TelegramNotifier()
         self.mcp_client = mcp_client
         self.execution_mode = "MCP" if mcp_client is not None else "DEMO"
         self.binance_connected = False
@@ -193,6 +195,7 @@ class TradingAgent:
 
             # Step 2: create a transparent multi-indicator signal.
             signal = self.signal_generator.generate_signal(analysis)
+            self.notifier.signal(symbol, signal)
 
             # Step 3: show the complete signal report.
             print(self.signal_generator.format_signal_report(signal))
@@ -254,6 +257,7 @@ class TradingAgent:
                 "opened_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
             }
             self.open_positions.append(position)
+            self.notifier.trade(position)
             print(f"[TradingAgent] Position recorded. Open positions: {len(self.open_positions)}")
             return {"symbol": symbol, "signal": signal, "status": "executed", "position": position, "reason": reason}
         except Exception as exc:

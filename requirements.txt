@@ -12,3 +12,9 @@ python-dotenv>=1.0.0
 
 # HTTP client support for future Binance and Agent OS integrations
 requests>=2.31.0
+
+# Optional read-only dashboard and charting
+streamlit>=1.30.0
+plotly>=5.18.0
+# Optional Telegram library; notifier has a direct HTTPS fallback
+python-telegram-bot>=20.0

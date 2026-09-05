@@ -26,8 +26,9 @@ SmartTrader-AI is a modular, transparent trading research agent created for the 
 - Dynamic ATR stop-losses, take-profit targets, and risk/reward validation
 - Drawdown, daily-loss, concurrent-position, and emergency-stop protection
 - Binance public market-data analysis without requiring credentials
-- Optional Binance Agent OS MCP execution path with safe DEMO fallback
-- Modular Python architecture separating analysis, signals, risk, and orchestration
+- Optional dark Streamlit dashboard with live read-only BTCUSDT/ETHUSDT charts
+- 30-day public Binance backtesting with fees, slippage, risk-aware sizing, and metrics
+- Optional Telegram alerts with HTTPS fallback and credential-safe no-op behavior
 
 ## ⚡ Quick Demo
 
@@ -35,7 +36,22 @@ SmartTrader-AI is a modular, transparent trading research agent created for the 
 python main.py
 ```
 
-Illustrative console output (values and decisions vary with live market data):
+Run the safe public-data-only backtest:
+
+```bash
+python main.py --backtest --symbol BTCUSDT
+# or: python -m agent.backtester --symbol ETHUSDT --days 30
+```
+
+Launch the read-only dashboard (optional dependencies):
+
+```bash
+streamlit run dashboard.py
+```
+
+The backtester and dashboard never call order APIs; the normal entry point
+retains DEMO fallback when Binance MCP is unavailable.
+
 
 ```text
 ================================================
@@ -104,7 +120,9 @@ SmartTrader-AI/
 │   ├── market_analyzer.py    # Binance candles and technical indicators
 │   ├── signal_generator.py   # Weighted BUY/SELL/HOLD decisions
 │   ├── risk_manager.py       # Position sizing and safety controls
+│   ├── backtester.py         # Public-data-only paper backtester
 │   └── trading_agent.py      # Main module coordinator
+├── dashboard.py              # Optional read-only Streamlit dashboard
 ├── config/
 │   └── settings.py           # Environment-backed configuration
 ├── .env.example              # Configuration template
@@ -160,6 +178,8 @@ The following values can be configured in `.env`:
 | `MAX_DRAWDOWN` | `10.0` | Maximum portfolio drawdown percentage |
 | `STOP_LOSS_ATR_MULTIPLIER` | `1.5` | ATR multiplier for stop placement |
 | `MIN_RISK_REWARD_RATIO` | `2.0` | Minimum target-to-risk ratio |
+| `TELEGRAM_BOT_TOKEN` | empty | Optional Telegram bot token |
+| `TELEGRAM_CHAT_ID` | empty | Optional Telegram destination; both values enable alerts |
 
 ## 💻 Tech Stack
 

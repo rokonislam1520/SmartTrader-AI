@@ -52,6 +52,10 @@ def _get_bool(name: str, default: bool) -> bool:
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "").strip()
 BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "").strip()
 
+# Telegram is optional; notifier methods become safe no-ops when unset.
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+
 # Trading and risk-management settings.
 BINANCE_TESTNET = _get_bool("BINANCE_TESTNET", True)
 TRADING_PAIRS = tuple(
@@ -124,6 +128,8 @@ def get_config() -> Dict[str, Any]:
     return {
         "BINANCE_API_KEY": BINANCE_API_KEY,
         "BINANCE_API_SECRET": BINANCE_API_SECRET,
+        "TELEGRAM_BOT_TOKEN": TELEGRAM_BOT_TOKEN,
+        "TELEGRAM_CHAT_ID": TELEGRAM_CHAT_ID,
         "BINANCE_TESTNET": BINANCE_TESTNET,
         "TRADING_PAIRS": TRADING_PAIRS,
         "MAX_RISK_PER_TRADE": MAX_RISK_PER_TRADE,
