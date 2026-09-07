@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from agent.backtester import Backtester
+from agent.sentiment_analyzer import SentimentAnalyzer
 
 from agent.trading_agent import TradingAgent
 from config.settings import BINANCE_TESTNET, MAX_RISK_PER_TRADE, TRADING_PAIRS
@@ -39,6 +40,22 @@ def print_banner() -> None:
     print("=" * 48)
 
 
+def print_sentiment() -> None:
+    """Print the current public-market sentiment before the trading cycle."""
+    try:
+        sentiment = SentimentAnalyzer().analyze()
+        print(
+            f"[SentimentAnalyzer] Fear & Greed: {sentiment['fear_greed_value']:.0f} "
+            f"({sentiment['fear_greed_classification']}) | "
+            f"Trending: {sentiment['trending_count']} | "
+            f"Score: {sentiment['sentiment_score']:.1f} | "
+            f"Bias: {sentiment['sentiment_bias']}"
+        )
+        print("[main] Sentiment bias will be applied to each technical signal.")
+    except Exception as exc:
+        print(f"[main] Sentiment unavailable; technical signals continue: {exc}")
+
+
 def main() -> None:
     """Initialize safe demo mode, or run the public-data-only backtester."""
     parser = argparse.ArgumentParser(description="SmartTrader-AI")
@@ -57,6 +74,7 @@ def main() -> None:
     print(f"  Testnet mode: {BINANCE_TESTNET}")
     print(f"  Max risk per trade: {MAX_RISK_PER_TRADE}%")
     print("  Execution mode: MCP if available, otherwise DEMO")
+    print_sentiment()
 
     try:
         # Create the already-authenticated Agent OS client and inject it into
